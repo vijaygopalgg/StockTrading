@@ -7,9 +7,8 @@ Fetches S&P 500 + Dow Jones tickers, then for each stock pulls:
       * Next week Friday expiry
       * Next-to-next week Friday expiry
 
-Ticker source strategy (in order):
-  1. Live fetch from Wikipedia (with browser headers)
-  2. Fall back to embedded built-in lists if Wikipedia is blocked
+Ticker source:
+  Custom master list defined in MASTER_TICKERS (editable at top of file)
 
 Usage:
   python stock_options_puller.py
@@ -18,7 +17,9 @@ Usage:
 """
 
 import argparse
+import random
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
@@ -30,49 +31,50 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 
-# ── Embedded ticker lists (fallback) ─────────────────────────────────────────
-# Updated as of May 2025. Used only if Wikipedia fetch fails.
+# ── Master ticker list ────────────────────────────────────────────────────────
 
-DOW_30 = [
-    "AAPL", "AMGN", "AMZN", "AXP", "BA", "CAT", "CRM", "CSCO", "CVX", "DIS",
-    "GS", "HD", "HON", "IBM", "JNJ", "JPM", "KO", "MCD", "MMM", "MRK",
-    "MSFT", "NKE", "NVDA", "PG", "SHW", "TRV", "UNH", "V", "VZ", "WMT",
-]
-
-SP500_TICKERS = [
-    "A","AAL","AAP","AAPL","ABBV","ABC","ABMD","ABT","ACN","ACGL","ACV","ADI","ADM","ADP","ADSK",
-    "AEE","AEP","AES","AFL","AIG","AIZ","AJG","AKAM","ALB","ALGN","ALK","ALL","ALLE","AMAT","AMCR",
-    "AMD","AME","AMGN","AMP","AMT","AMZN","ANET","ANSS","AON","AOS","APA","APD","APH","APTV","ARE",
-    "ATO","ATVI","AVB","AVGO","AVY","AWK","AXON","AXP","AZO","BA","BAC","BAX","BBWI","BBY","BDX","BEN",
-    "BF-B","BIIB","BIO","BK","BKNG","BKR","BLK","BMY","BR","BRK-B","BRO","BSX","BWA","BXP","C",
-    "CAG","CAH","CARR","CAT","CB","CBOE","CBRE","CCI","CCL","CDNS","CDW","CE","CEG","CF","CFG",
-    "CHD","CHRW","CHTR","CI","CINF","CL","CLX","CMA","CMCSA","CME","CMG","CMI","CMS","CNC","CNP",
-    "COF","COO","COP","COST","CPB","CPRT","CPT","CRL","CRM","CSCO","CSGP","CSX","CTAS","CTLT",
-    "CTRA","CTSH","CTVA","CVS","CVX","CZR","D","DAL","DD","DE","DFS","DG","DGX","DHI","DHR","DIS",
-    "DISH","DLR","DLTR","DOV","DOW","DPZ","DRE","DRI","DTE","DUK","DVA","DVN","DXC","DXCM","EA",
-    "EBAY","ECL","ED","EFX","EIX","EL","EMN","EMR","ENPH","EOG","EPAM","EQIX","EQR","EQT","ES",
-    "ESS","ETN","ETR","EVRG","EW","EXC","EXPD","EXPE","EXR","F","FANG","FAST","FCX","FDS","FDX",
-    "FE","FFIV","FIS","FISV","FITB","FLT","FMC","FOX","FOXA","FRC","FRT","FTNT","FTV","GD","GE",
-    "GEHC","GEN","GILD","GIS","GL","GLW","GM","GNRC","GOOG","GOOGL","GPC","GPN","GRMN","GS","GWW",
-    "HAL","HAS","HBAN","HCA","HD","HES","HIG","HII","HLT","HOLX","HON","HPE","HPQ","HRL","HSIC",
-    "HST","HSY","HUM","HWM","IBM","ICE","IDXX","IEX","IFF","ILMN","INCY","INTC","INTU","INVH",
-    "IP","IPG","IQV","IR","IRM","ISRG","IT","ITW","IVZ","J","JBHT","JCI","JKHY","JNJ","JNPR",
-    "JPM","K","KDP","KEY","KEYS","KHC","KIM","KLAC","KMB","KMI","KMX","KO","KR","L","LDOS","LEN",
-    "LH","LHX","LIN","LKQ","LLY","LMT","LNC","LNT","LOW","LRCX","LUV","LVS","LW","LYB","LYV",
-    "MA","MAA","MAR","MAS","MCD","MCHP","MCK","MCO","MDLZ","MDT","MET","META","MGM","MHK","MKC",
-    "MKTX","MLM","MMC","MMM","MNST","MO","MOH","MOS","MPC","MPWR","MRK","MRNA","MRO","MS","MSCI",
-    "MSFT","MSI","MTB","MTD","MU","NCLH","NDAQ","NEE","NEM","NFLX","NI","NKE","NOC","NOV","NOW",
-    "NRG","NSC","NTAP","NTRS","NUE","NVDA","NVR","NWL","NWS","NWSA","NXPI","O","OGN","OKE","OMC",
-    "ON","ORCL","ORLY","OXY","PAYX","PAYC","PCAR","PCG","PEAK","PEG","PEP","PFE","PFG","PG","PGR",
-    "PH","PHM","PKG","PKI","PLD","PM","PNC","PNR","PNW","POOL","PPG","PPL","PRU","PSA","PSX","PTC",
-    "PWR","PXD","PYPL","QCOM","QRVO","RCL","RE","REG","REGN","RF","RHI","RJF","RL","RMD","ROK",
-    "ROL","ROP","ROST","RSG","RTX","SBAC","SBUX","SCHW","SEE","SHW","SJM","SLB","SNA","SNPS","SO",
-    "SPG","SPGI","SRE","STE","STT","STX","STZ","SWK","SWKS","SYF","SYK","SYY","T","TAP","TDG",
-    "TDY","TECH","TEL","TER","TFC","TFX","TGT","TJX","TMO","TMUS","TPR","TRMB","TROW","TRV","TSCO",
-    "TSLA","TSN","TT","TTWO","TXN","TXT","TYL","UAL","UDR","UHS","ULTA","UNH","UNP","UPS","URI",
-    "USB","V","VFC","VLO","VMC","VNO","VRSN","VRTX","VTR","VTRS","VZ","WAB","WAT","WBA","WBD",
-    "WDC","WEC","WELL","WFC","WHR","WM","WMB","WMT","WRB","WRK","WST","WTW","WY","WYNN","XEL",
-    "XOM","XRAY","XYL","YUM","ZBH","ZBRA","ZION","ZTS",
+MASTER_TICKERS = [
+    "A","AAL","AAP","AAPL","ABBV","ABC","ABMD","ABNB","ABR","ABT","ACGL","ACN","ACV","ADBE",
+    "ADI","ADM","ADP","ADSK","AEE","AEP","AES","AFL","AIG","AIZ","AJG","AKAM","ALB","ALGN",
+    "ALK","ALL","ALLE","ALSN","AMAT","AMCR","AMD","AME","AMGN","AMP","AMT","AMZN","ANET",
+    "ANSS","AON","AOS","APA","APD","APH","APLD","APO","APP","APTV","ARE","ARGX","ARM","ASML",
+    "ATO","ATVI","AVB","AVGO","AVY","AWK","AXON","AXP","AZN","AZO","BA","BAC","BAH","BAX",
+    "BBWI","BBY","BDX","BEN","BF-B","BIIB","BIO","BK","BKNG","BKR","BLK","BMY","BR","BRK-B",
+    "BRO","BSX","BWA","BXP","C","CAG","CAH","CAKE","CARR","CAT","CAVA","CB","CBOE","CBRE",
+    "CCEP","CCI","CCL","CDNS","CDW","CE","CEG","CELH","CF","CFG","CHD","CHRW","CHTR","CI",
+    "CINF","CL","CLS","CLX","CMA","CMCSA","CME","CMG","CMI","CMS","CNC","CNP","COF","COIN",
+    "COO","COP","COST","CPB","CPRT","CPT","CRL","CRM","CRS","CRWD","CSCO","CSGP","CSX","CTAS",
+    "CTLT","CTRA","CTSH","CTVA","CUK","CVNA","CVS","CVX","CZR","D","DAL","DASH","DD","DDOG",
+    "DE","DECK","DFS","DG","DGX","DHI","DHR","DIS","DISH","DKNG","DLR","DLTR","DOV","DOW",
+    "DPZ","DRE","DRI","DTE","DUK","DVA","DVN","DXC","DXCM","EA","EBAY","ECL","ED","EFX","EIX",
+    "EL","ELF","EME","EMN","EMR","ENPH","ENX","EOG","EPAM","EPD","EQIX","EQR","EQT","ES","ESS",
+    "ETN","ETR","EVRG","EW","EXC","EXEL","EXPD","EXPE","EXR","F","FANG","FAST","FCNCA","FCX",
+    "FDS","FDX","FE","FFIV","FI","FIG","FIS","FISV","FITB","FLT","FMC","FOX","FOXA","FRC",
+    "FRO","FRSH","FRT","FTAI","FTNT","FTV","FUTU","GD","GE","GEHC","GEN","GFS","GILD","GIS",
+    "GL","GLW","GM","GNRC","GOOG","GOOGL","GPC","GPN","GRAL","GRMN","GS","GWW","HAL","HAS",
+    "HBAN","HCA","HD","HES","HIG","HII","HLT","HOLX","HON","HOOD","HPE","HPQ","HRL","HSIC",
+    "HST","HSY","HTGC","HUM","HWM","IBKR","IBM","ICE","IDXX","IEX","IFF","ILMN","INCY","INSW",
+    "INTC","INTU","INVH","IP","IPG","IQV","IR","IRM","ISRG","IT","ITW","IVZ","J","JBHT","JCI",
+    "JEPI","JEPQ","JKHY","JNJ","JNPR","JPM","K","KDP","KEY","KEYS","KGC","KHC","KIM","KLAC",
+    "KMB","KMI","KMX","KNSL","KO","KR","L","LBRT","LDOS","LEN","LH","LHX","LI","LIN","LKQ",
+    "LLY","LMT","LNC","LNT","LOW","LRCX","LULU","LUV","LVS","LW","LYB","LYV","MA","MAA","MAR",
+    "MARA","MAS","MCD","MCHP","MCK","MCO","MDLZ","MDT","MELI","MET","META","MGM","MHK","MKC",
+    "MKTX","MLM","MMC","MMM","MNST","MO","MOD","MOH","MOS","MPC","MPWR","MRK","MRNA","MRO",
+    "MRVL","MS","MSCI","MSFT","MSI","MSTR","MTB","MTD","MU","NCLH","NDAQ","NE","NEE","NEM",
+    "NFLX","NGD","NI","NKE","NOC","NOV","NOW","NRG","NSC","NTAP","NTRS","NUE","NVDA","NVO",
+    "NVR","NWL","NWS","NWSA","NXPI","O","ODFL","OGN","OKE","OMC","ON","ONON","ORCL","ORLY",
+    "OXY","PANW","PAYC","PAYX","PCAR","PCG","PDD","PEAK","PEG","PEP","PERI","PFE","PFG","PG",
+    "PGR","PH","PHM","PKG","PKI","PLD","PLTR","PM","PNC","PNR","PNW","POOL","PPG","PPL","PRU",
+    "PSA","PSX","PTC","PWR","PXD","PYPL","QCOM","QLYS","QRVO","RCL","RDDT","RE","REG","REGN",
+    "RELY","RF","RHI","RIOT","RJF","RL","RMBS","RMD","ROK","ROL","ROP","ROST","RSG","RTX",
+    "SBAC","SBUX","SCHW","SEE","SHOP","SHW","SJM","SLB","SNA","SNPS","SO","SOFI","SPG","SPGI",
+    "SPOT","SRE","STE","STT","STX","STZ","SWK","SWKS","SYF","SYK","SYY","T","TAP","TDG","TDW",
+    "TDY","TEAM","TECH","TEL","TER","TEVA","TEX","TFC","TFX","TGT","TJX","TLRY","TMO","TMUS",
+    "TPR","TRMB","TROW","TRV","TS","TSCO","TSLA","TSN","TT","TTD","TTWO","TXN","TXT","TYL",
+    "UAL","UDR","UHS","ULTA","UNH","UNP","UPS","URI","USB","V","VFC","VLO","VMC","VNO","VRSK",
+    "VRSN","VRT","VRTX","VTR","VTRS","VZ","WAB","WAT","WBA","WBD","WDAY","WDC","WEC","WELL",
+    "WFC","WHD","WHR","WM","WMB","WMT","WRB","WRK","WST","WTW","WY","WYNN","XEL","XOM","XRAY",
+    "XYL","YUM","ZBH","ZBRA","ZION","ZS","ZTS","ZWS",
 ]
 
 
@@ -92,86 +94,12 @@ def get_expiry_dates():
     return str(f1), str(f2)
 
 
-# ── Ticker fetchers ───────────────────────────────────────────────────────────
-
-def fetch_sp500_live():
-    """Try to fetch live S&P 500 list from Wikipedia with browser headers."""
-    try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        tables = pd.read_html(
-            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            storage_options={"User-Agent": headers["User-Agent"]},
-        )
-        tickers = tables[0]["Symbol"].str.upper().str.strip().str.replace(".", "-", regex=False)
-        return list(tickers)
-    except Exception:
-        return None
-
-
-def fetch_dow_live():
-    """Try to fetch live Dow list from Wikipedia with browser headers."""
-    try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-        }
-        tables = pd.read_html(
-            "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
-            storage_options={"User-Agent": headers["User-Agent"]},
-        )
-        for table in tables:
-            for col in table.columns:
-                vals = table[col].dropna().astype(str)
-                if vals.str.match(r"^[A-Z]{1,5}$").mean() > 0.5:
-                    return list(vals.str.upper().str.strip())
-        return None
-    except Exception:
-        return None
-
+# ── Ticker map builder ────────────────────────────────────────────────────────
 
 def build_ticker_index_map():
-    """
-    Build {ticker: index_label} map.
-    Tries live Wikipedia fetch first; falls back to embedded lists.
-    """
-    print("  Trying live fetch from Wikipedia...")
-    sp500_list = fetch_sp500_live()
-    dow_list   = fetch_dow_live()
-
-    if sp500_list:
-        print(f"  S&P 500: fetched {len(sp500_list)} tickers (live)")
-    else:
-        sp500_list = SP500_TICKERS
-        print(f"  S&P 500: using embedded list ({len(sp500_list)} tickers)")
-
-    if dow_list:
-        print(f"  Dow Jones: fetched {len(dow_list)} tickers (live)")
-    else:
-        dow_list = DOW_30
-        print(f"  Dow Jones: using embedded list ({len(dow_list)} tickers)")
-
-    sp500_set = set(sp500_list)
-    dow_set   = set(dow_list)
-
-    combined = {}
-    for t in sp500_set:
-        combined[t] = "Both" if t in dow_set else "S&P 500"
-    for t in dow_set:
-        if t not in combined:
-            combined[t] = "Dow"
-
-    return combined
+    """Return {ticker: 'Custom'} for every ticker in MASTER_TICKERS."""
+    print(f"  Using master ticker list ({len(MASTER_TICKERS)} tickers)")
+    return {t: "Custom" for t in MASTER_TICKERS}
 
 
 # ── Options fetcher ───────────────────────────────────────────────────────────
@@ -200,11 +128,38 @@ def get_itm_call(ticker_obj, expiry, current_price):
         return None, None
 
 
+# ── Rate-limit safe fetch helpers ────────────────────────────────────────────
+
+def _is_rate_limit_error(e):
+    msg = str(e).lower()
+    return "too many requests" in msg or "rate limit" in msg or "429" in msg
+
+def _fetch_with_retry(fn, retries=4, base_delay=5):
+    """Call fn(), retrying on rate-limit errors with exponential backoff + jitter."""
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            if _is_rate_limit_error(e) and attempt < retries - 1:
+                wait = base_delay * (2 ** attempt) + random.uniform(0, 2)
+                time.sleep(wait)
+            else:
+                raise
+    return None
+
+
 # ── Per-ticker processing ─────────────────────────────────────────────────────
 
 def process_ticker(ticker, index_label, expiry1, expiry2):
+    # Small random jitter before every request to spread out parallel calls
+    time.sleep(random.uniform(0.1, 0.6))
+
     row = {
         "Ticker": ticker,
+        "Company Name": None,
+        "Industry": None,
+        "Earnings Date": None,
+        "Earnings Soon": None,
         "Index": index_label,
         "Current Price": None,
         "Date": str(date.today()),
@@ -221,11 +176,35 @@ def process_ticker(ticker, index_label, expiry1, expiry2):
         "Notes": "",
     }
     try:
-        t     = yf.Ticker(ticker)
-        price = round(float(t.fast_info.last_price), 2)
+        t = yf.Ticker(ticker)
+
+        # ── Company Name, Industry & Earnings — consolidated into t.info ──
+        # t.info is one HTTP call; t.calendar is another. We pull both but
+        # wrap each separately so one failure doesn't block the other.
+        try:
+            info = _fetch_with_retry(lambda: t.info)
+            row["Company Name"] = info.get("longName") or info.get("shortName") or None
+            row["Industry"]     = info.get("industry") or info.get("sector") or None
+        except Exception:
+            pass  # non-fatal
+
+        try:
+            cal = _fetch_with_retry(lambda: t.calendar)
+            ed  = cal.get("Earnings Date") if cal else None
+            if ed:
+                ed_date = ed[0].date() if hasattr(ed[0], "date") else ed[0]
+                row["Earnings Date"] = str(ed_date)
+                days_away = (ed_date - date.today()).days
+                row["Earnings Soon"] = "⚠️ Yes" if 0 <= days_away <= 14 else "No"
+        except Exception:
+            pass  # non-fatal
+
+        # ── Price ──
+        price = round(float(_fetch_with_retry(lambda: t.fast_info.last_price)), 2)
         row["Current Price"] = price
 
-        available = t.options
+        # ── Options ──
+        available = _fetch_with_retry(lambda: t.options)
         if not available:
             row["Notes"] = "No options data"
             return row
@@ -265,14 +244,15 @@ def process_ticker(ticker, index_label, expiry1, expiry2):
 # ── Excel output ──────────────────────────────────────────────────────────────
 
 COLUMNS = [
-    "Ticker", "Index", "Current Price", "Date",
+    "Ticker", "Company Name", "Industry", "Earnings Date", "Earnings Soon",
+    "Index", "Current Price", "Date",
     "Next Friday Expiry", "Next Friday Strike", "Next Friday Call Price ($)",
     "Next-Next Friday Expiry", "Next-Next Strike", "Next-Next Call Price ($)",
     "NF Strike - Current Price", "N2F Strike - Current Price",
     "NF Signal", "N2F Signal",
     "Notes",
 ]
-COL_WIDTHS = [10, 8, 14, 12, 18, 18, 22, 22, 16, 22, 22, 22, 12, 12, 35]
+COL_WIDTHS = [10, 30, 25, 14, 13, 8, 14, 12, 18, 18, 22, 22, 16, 22, 22, 22, 12, 12, 35]
 
 
 def save_excel(rows, output_path):
@@ -291,6 +271,7 @@ def save_excel(rows, output_path):
     thin        = Side(style="thin")
     border      = Border(left=thin, right=thin, top=thin, bottom=thin)
     center      = Alignment(horizontal="center", vertical="center")
+    left_align  = Alignment(horizontal="left", vertical="center")
 
     for i in range(1, len(COLUMNS) + 1):
         cell = ws.cell(row=1, column=i)
@@ -305,11 +286,20 @@ def save_excel(rows, output_path):
     bad_fill  = PatternFill("solid", start_color="FFC7CE")   # red    - Bad
     diff_fill = PatternFill("solid", start_color="EDEDED")   # grey   - diff columns
 
-    # Column index map (1-based): Notes is now col 15
-    # 11=NF diff, 12=N2F diff, 13=NF Signal, 14=N2F Signal, 15=Notes
+    # Column positions (1-based):
+    # 1=Ticker, 2=Company Name, 3=Industry, 4=Earnings Date, 5=Earnings Soon
+    # 6=Index, 7=Current Price, 8=Date
+    # 9=NF Expiry, 10=NF Strike, 11=NF Call Price
+    # 12=N2F Expiry, 13=N2F Strike, 14=N2F Call Price
+    # 15=NF diff, 16=N2F diff, 17=NF Signal, 18=N2F Signal, 19=Notes
+
+    earnings_warn_fill = PatternFill("solid", start_color="FF0000")  # red bg for earnings soon
+    earnings_warn_font_color = "FFFFFF"                              # white text
+
     for row_idx in range(2, ws.max_row + 1):
-        notes     = str(ws.cell(row=row_idx, column=15).value or "")
-        index_val = str(ws.cell(row=row_idx, column=2).value or "")
+        notes     = str(ws.cell(row=row_idx, column=19).value or "")
+        index_val = str(ws.cell(row=row_idx, column=6).value or "")
+        earn_soon = str(ws.cell(row=row_idx, column=5).value or "")
         has_error = "error" in notes.lower() or "no options" in notes.lower()
         is_both   = index_val == "Both"
         row_fill  = (err_fill if has_error else
@@ -317,23 +307,34 @@ def save_excel(rows, output_path):
                      alt_fill if row_idx % 2 == 0 else PatternFill())
 
         for col_idx in range(1, len(COLUMNS) + 1):
-            cell           = ws.cell(row=row_idx, column=col_idx)
-            cell.border    = border
-            cell.alignment = center
-            cell.font      = Font(name="Arial", size=10)
-            if col_idx in (7, 10):                      # call price columns
+            cell        = ws.cell(row=row_idx, column=col_idx)
+            cell.border = border
+            cell.font   = Font(name="Arial", size=10)
+
+            if col_idx in (2, 3):                           # Company Name, Industry — left-align
+                cell.alignment = left_align
+            else:
+                cell.alignment = center
+
+            if col_idx == 5:                                # Earnings Soon flag
+                if "yes" in earn_soon.lower():
+                    cell.fill = earnings_warn_fill
+                    cell.font = Font(name="Arial", size=10, bold=True, color=earnings_warn_font_color)
+                else:
+                    cell.fill = row_fill
+            elif col_idx in (11, 14):                       # call price columns
                 cell.fill = price_fill
                 if cell.value is not None:
                     cell.number_format = "$#,##0.00"
-            elif col_idx == 3:                          # current price
+            elif col_idx == 7:                              # current price
                 cell.fill = row_fill
                 if cell.value is not None:
                     cell.number_format = "$#,##0.00"
-            elif col_idx in (11, 12):                   # difference columns
+            elif col_idx in (15, 16):                       # difference columns
                 cell.fill = diff_fill
                 if cell.value is not None:
                     cell.number_format = "$#,##0.00;[Red]-$#,##0.00"
-            elif col_idx in (13, 14):                   # signal columns
+            elif col_idx in (17, 18):                       # signal columns
                 val = cell.value
                 if val == "Good":
                     cell.fill = good_fill
@@ -353,10 +354,8 @@ def save_excel(rows, output_path):
     summary_data = [
         ["Generated On",      str(date.today())],
         ["Total Tickers",     len(rows)],
-        ["S&P 500 Only",      sum(1 for r in rows if r["Index"] == "S&P 500")],
-        ["Dow Only",          sum(1 for r in rows if r["Index"] == "Dow")],
-        ["In Both Indexes",   sum(1 for r in rows if r["Index"] == "Both")],
         ["With Options Data", sum(1 for r in rows if r["Next Friday Call Price ($)"] is not None)],
+        ["Earnings Within 2W",sum(1 for r in rows if r.get("Earnings Soon","") == "⚠️ Yes")],
         ["Errors / No Data",  sum(1 for r in rows if r["Notes"])],
     ]
     for r_idx, (label, value) in enumerate(summary_data, 1):
@@ -372,8 +371,8 @@ def save_excel(rows, output_path):
 
 def main():
     parser = argparse.ArgumentParser(description="S&P500 + Dow covered call options puller")
-    parser.add_argument("--output",  default="options_output1.xlsx", help="Output Excel file")
-    parser.add_argument("--workers", type=int, default=8, help="Parallel threads (default: 8)")
+    parser.add_argument("--output",  default="options_output_dt0515.xlsx", help="Output Excel file")
+    parser.add_argument("--workers", type=int, default=4, help="Parallel threads (default: 4)")
     args = parser.parse_args()
 
     output_path = Path(args.output)
@@ -387,9 +386,6 @@ def main():
 
     tickers = sorted(ticker_map.keys())
     print(f"\n  Total unique tickers : {len(tickers)}")
-    print(f"  S&P 500 only         : {sum(1 for v in ticker_map.values() if v == 'S&P 500')}")
-    print(f"  Dow only             : {sum(1 for v in ticker_map.values() if v == 'Dow')}")
-    print(f"  In both indexes      : {sum(1 for v in ticker_map.values() if v == 'Both')}")
 
     expiry1, expiry2 = get_expiry_dates()
     print(f"\nTarget expiries:")
