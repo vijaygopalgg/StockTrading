@@ -59,7 +59,8 @@ Set these in your Render dashboard:
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | Your Neon connection string |
+| postgresql://neondb_owner:npg_0ibZI7crwSxE@ep-aged-mountain-aqvbjego.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require
+| Your Neon connection string |
 | `SECRET_KEY` | A long random secret string |
 
 ### Deploy Steps
