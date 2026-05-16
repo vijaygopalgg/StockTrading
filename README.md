@@ -1,6 +1,6 @@
 # 📈 Smart Weekly Covered Call
 
-A secure, cloud-hosted web application that analyzes the **top 500 stocks (S&P 500)**, correlates quarterly earnings results with near-term options premiums, and helps investors make educated decisions on **which covered call options to buy each week**.
+A secure, cloud-hosted web application that analyzes the **top 500 trending stocks ()**, correlates quarterly earnings results with near-term options premiums, and helps investors make educated decisions on **which covered call options to buy each week**.
 
 ---
 
