@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Smart Weekly Covered Call</title>
+<style>
+  :root {
+    --bg: #0a0f1e;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --border: #1e2d45;
+    --accent: #2563eb;
+    --accent2: #3b82f6;
+    --green: #16a34a;
+    --green-bg: #052e16;
+    --green-text: #4ade80;
+    --red: #dc2626;
+    --red-bg: #2d0a0a;
+    --red-text: #f87171;
+    --yellow: #d97706;
+    --yellow-bg: #2d1a00;
+    --yellow-text: #fbbf24;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --font: 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Cascadia Code', 'Fira Code', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  /* ── Auth pages ── */
+  .auth-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 20% 50%, #0d1f3c 0%, var(--bg) 70%);
+  }
+  .auth-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 40px 36px; width: 100%; max-width: 420px;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+  }
+  .auth-logo {
+    font-size: 22px; font-weight: 700; color: var(--accent2);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 10px;
+  }
+  .auth-logo span { font-size: 28px; }
+  .auth-sub { color: var(--text3); font-size: 13px; margin-bottom: 28px; }
+  .auth-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 20px; }
+  label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; font-weight: 500; letter-spacing: .4px; }
+  input[type=text], input[type=password], input[type=email] {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px;
+    font-family: var(--font); margin-bottom: 16px; transition: border .2s;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent2); }
+  .btn {
+    width: 100%; padding: 11px; background: var(--accent); color: #fff;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .2s; letter-spacing: .3px;
+  }
+  .btn:hover { background: var(--accent2); }
+  .btn.secondary {
+    background: transparent; border: 1px solid var(--border); color: var(--text2);
+    margin-top: 8px;
+  }
+  .btn.secondary:hover { border-color: var(--accent2); color: var(--accent2); }
+  .btn.danger { background: var(--red); }
+  .btn.sm { width: auto; padding: 7px 14px; font-size: 12px; }
+  .btn.green-btn { background: var(--green); }
+  .link-btn {
+    background: none; border: none; color: var(--accent2); cursor: pointer;
+    font-size: 13px; text-decoration: underline; padding: 0;
+  }
+  .auth-footer { text-align: center; margin-top: 16px; color: var(--text3); font-size: 13px; }
+  .error-msg { color: var(--red-text); background: var(--red-bg); border: 1px solid var(--red);
+    border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+  .success-msg { color: var(--green-text); background: var(--green-bg); border: 1px solid var(--green);
+    border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
+
+  /* ── App layout ── */
+  #app { display: none; flex-direction: column; min-height: 100vh; }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-logo { font-size: 16px; font-weight: 700; color: var(--accent2); display: flex; align-items: center; gap: 8px; }
+  .header-logo span { font-size: 20px; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .user-badge {
+    font-size: 12px; color: var(--text2); background: var(--surface2);
+    border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px;
+  }
+  .icon-btn {
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    transition: all .2s;
+  }
+  .icon-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  main { flex: 1; padding: 20px 24px; max-width: 1600px; margin: 0 auto; width: 100%; }
+
+  /* ── Summary cards ── */
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px; margin-bottom: 20px;
+  }
+  .summary-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .summary-card .label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+  .summary-card .value { font-size: 26px; font-weight: 700; font-family: var(--mono); }
+  .summary-card.green .value { color: var(--green-text); }
+  .summary-card.red .value { color: var(--red-text); }
+  .summary-card.yellow .value { color: var(--yellow-text); }
+  .summary-card.blue .value { color: var(--accent2); }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-group label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+  .filter-group input, .filter-group select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; color: var(--text); font-size: 13px; font-family: var(--font);
+    outline: none; min-width: 130px;
+  }
+  .filter-group input:focus, .filter-group select:focus { border-color: var(--accent2); }
+  .filter-actions { margin-left: auto; display: flex; gap: 8px; align-items: flex-end; }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .table-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .table-header h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+  .table-meta { font-size: 12px; color: var(--text3); }
+  .tbl-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--surface2); }
+  th {
+    padding: 10px 12px; text-align: left; color: var(--text3);
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+    border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer;
+    user-select: none;
+  }
+  th:hover { color: var(--accent2); }
+  th .sort-icon { margin-left: 4px; opacity: .5; }
+  th.active .sort-icon { opacity: 1; color: var(--accent2); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody tr:last-child { border-bottom: none; }
+  td { padding: 9px 12px; color: var(--text2); white-space: nowrap; }
+  td.ticker { font-family: var(--mono); font-weight: 700; color: var(--accent2); font-size: 13px; }
+  td.company { color: var(--text); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  td.price { font-family: var(--mono); color: var(--text); }
+  td.diff { font-family: var(--mono); }
+  .signal {
+    display: inline-block; padding: 3px 9px; border-radius: 5px;
+    font-size: 11px; font-weight: 700; letter-spacing: .4px;
+  }
+  .signal.good { background: var(--green-bg); color: var(--green-text); border: 1px solid var(--green); }
+  .signal.bad  { background: var(--red-bg);   color: var(--red-text);   border: 1px solid var(--red); }
+  .earnings-badge {
+    display: inline-block; background: var(--yellow-bg); color: var(--yellow-text);
+    border: 1px solid var(--yellow); border-radius: 4px; font-size: 10px;
+    padding: 2px 6px; font-weight: 700;
+  }
+  .no-data { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .no-data .icon { font-size: 40px; margin-bottom: 10px; }
+
+  /* ── Refresh bar ── */
+  .refresh-bar {
+    background: var(--yellow-bg); border: 1px solid var(--yellow);
+    border-radius: 8px; padding: 10px 16px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--yellow-text);
+  }
+  .progress-bar { flex: 1; background: var(--bg); border-radius: 4px; height: 6px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent2); transition: width .3s; border-radius: 4px; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px; padding: 12px 18px;
+    border-radius: 8px; font-size: 13px; font-weight: 500;
+    transform: translateY(80px); opacity: 0; transition: all .3s;
+    z-index: 999; pointer-events: none;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { background: var(--green-bg); color: var(--green-text); border: 1px solid var(--green); }
+  #toast.error   { background: var(--red-bg);   color: var(--red-text);   border: 1px solid var(--red); }
+  #toast.info    { background: var(--surface2);  color: var(--text);       border: 1px solid var(--border); }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--border); border-top-color: var(--accent2);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 32px; width: 100%; max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  .modal h3 { margin-bottom: 20px; font-size: 16px; }
+  .modal-footer { display: flex; gap: 8px; margin-top: 8px; }
+
+  /* pages */
+  .page { display: none; }
+  .page.active { display: block; }
+  #app-page { display: none; }
+  #app-page.active { display: flex; }
+
+  @media (max-width: 768px) {
+    main { padding: 12px; }
+    .filter-bar { gap: 8px; }
+    .summary-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ───────────────────────────────────────────────────── -->
+<div id="page-login" class="page active">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo"><span>📈</span> Smart Weekly Covered Call</div>
+      <div class="auth-sub">Options analysis for top 500 stocks</div>
+      <div class="auth-title">Sign In</div>
+      <div id="login-err" class="error-msg" style="display:none"></div>
+      <label>Username</label>
+      <input type="text" id="login-user" placeholder="your username" autocomplete="username"/>
+      <label>Password</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"/>
+      <button class="btn" onclick="doLogin()">Sign In</button>
+      <div class="auth-footer">No account? <button class="link-btn" onclick="showPage('page-register')">Register here</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── REGISTER ────────────────────────────────────────────────── -->
+<div id="page-register" class="page">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo"><span>📈</span> Smart Weekly Covered Call</div>
+      <div class="auth-sub">Create your account</div>
+      <div class="auth-title">Register</div>
+      <div id="reg-err" class="error-msg" style="display:none"></div>
+      <div id="reg-ok" class="success-msg" style="display:none"></div>
+      <label>Username</label>
+      <input type="text" id="reg-user" placeholder="choose a username"/>
+      <label>Email</label>
+      <input type="email" id="reg-email" placeholder="you@email.com"/>
+      <label>Password</label>
+      <input type="password" id="reg-pass" placeholder="min 6 characters"/>
+      <button class="btn" onclick="doRegister()">Create Account</button>
+      <button class="btn secondary" onclick="showPage('page-login')">Back to Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CHANGE PASSWORD ─────────────────────────────────────────── -->
+<div id="page-changepw" class="page">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo"><span>🔒</span> Change Password</div>
+      <div class="auth-sub">Please set a new password to continue</div>
+      <div id="cpw-err" class="error-msg" style="display:none"></div>
+      <label>Current Password</label>
+      <input type="password" id="cpw-old" placeholder="current password"/>
+      <label>New Password</label>
+      <input type="password" id="cpw-new" placeholder="new password (min 6 chars)"/>
+      <label>Confirm New Password</label>
+      <input type="password" id="cpw-confirm" placeholder="repeat new password"/>
+      <button class="btn" onclick="doChangePassword()">Update Password</button>
+      <button class="btn secondary" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MAIN APP ────────────────────────────────────────────────── -->
+<div id="app-page" class="page">
+  <div id="app" style="display:flex; flex-direction:column; min-height:100vh;">
+    <header>
+      <div class="header-logo"><span>📈</span> Smart Weekly Covered Call</div>
+      <div class="header-right">
+        <span class="user-badge" id="header-user"></span>
+        <button class="icon-btn" onclick="openChangePwModal()">🔒 Password</button>
+        <button class="icon-btn" onclick="doLogout()">Sign Out</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Refresh progress bar -->
+      <div id="refresh-bar" class="refresh-bar" style="display:none">
+        <div class="spinner"></div>
+        <span id="refresh-msg">Fetching data…</span>
+        <div class="progress-bar"><div class="progress-fill" id="refresh-fill" style="width:0%"></div></div>
+        <span id="refresh-pct">0%</span>
+      </div>
+
+      <!-- Summary cards -->
+      <div class="summary-grid" id="summary-grid">
+        <div class="summary-card blue"><div class="label">Total Stocks</div><div class="value" id="s-total">—</div></div>
+        <div class="summary-card green"><div class="label">NF Good ✅</div><div class="value" id="s-good-nf">—</div></div>
+        <div class="summary-card red"><div class="label">NF Bad ❌</div><div class="value" id="s-bad-nf">—</div></div>
+        <div class="summary-card green"><div class="label">N2F Good ✅</div><div class="value" id="s-good-n2f">—</div></div>
+        <div class="summary-card red"><div class="label">N2F Bad ❌</div><div class="value" id="s-bad-n2f">—</div></div>
+        <div class="summary-card yellow"><div class="label">⚠️ Earnings Soon</div><div class="value" id="s-earnings">—</div></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Search Ticker / Company</label>
+          <input type="text" id="f-search" placeholder="AAPL, Apple…" oninput="debounceLoad()"/>
+        </div>
+        <div class="filter-group">
+          <label>NF Signal</label>
+          <select id="f-nf" onchange="loadData()">
+            <option value="">All</option>
+            <option value="Good">Good ✅</option>
+            <option value="Bad">Bad ❌</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>N2F Signal</label>
+          <select id="f-n2f" onchange="loadData()">
+            <option value="">All</option>
+            <option value="Good">Good ✅</option>
+            <option value="Bad">Bad ❌</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Earnings This Week</label>
+          <select id="f-earnings" onchange="loadData()">
+            <option value="">All</option>
+            <option value="true">⚠️ Earnings Soon Only</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Sort By</label>
+          <select id="f-sort" onchange="loadData()">
+            <option value="current_price">Price (High→Low)</option>
+            <option value="nf_call_price">NF Call Price</option>
+            <option value="n2f_call_price">N2F Call Price</option>
+            <option value="nf_strike_diff">NF Diff</option>
+            <option value="ticker">Ticker A-Z</option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn sm green-btn" onclick="triggerRefresh()">🔄 Refresh Data</button>
+          <button class="btn sm secondary" onclick="clearFilters()">Clear</button>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <h2>Options Data <span id="data-date" style="color:var(--text3); font-weight:400; font-size:12px;"></span></h2>
+          <span class="table-meta" id="row-count"></span>
+        </div>
+        <div class="tbl-scroll">
+          <table id="main-table">
+            <thead>
+              <tr>
+                <th onclick="sortBy('ticker')">Ticker <span class="sort-icon">↕</span></th>
+                <th>Company</th>
+                <th>Industry</th>
+                <th onclick="sortBy('current_price')">Price <span class="sort-icon">↕</span></th>
+                <th>Earnings</th>
+                <th>NF Expiry</th>
+                <th onclick="sortBy('nf_strike')">NF Strike <span class="sort-icon">↕</span></th>
+                <th onclick="sortBy('nf_call_price')">NF Call $ <span class="sort-icon">↕</span></th>
+                <th onclick="sortBy('nf_strike_diff')">NF Diff <span class="sort-icon">↕</span></th>
+                <th>NF Signal</th>
+                <th>N2F Expiry</th>
+                <th onclick="sortBy('n2f_strike')">N2F Strike <span class="sort-icon">↕</span></th>
+                <th onclick="sortBy('n2f_call_price')">N2F Call $ <span class="sort-icon">↕</span></th>
+                <th onclick="sortBy('n2f_strike_diff')">N2F Diff <span class="sort-icon">↕</span></th>
+                <th>N2F Signal</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-body">
+              <tr><td colspan="15" class="no-data"><div class="icon">📊</div>Click "Refresh Data" to load options data</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ── Change Password Modal ───────────────────────────────────── -->
+<div class="modal-overlay" id="cpw-modal">
+  <div class="modal">
+    <h3>🔒 Change Password</h3>
+    <div id="modal-err" class="error-msg" style="display:none"></div>
+    <div id="modal-ok" class="success-msg" style="display:none"></div>
+    <label>Current Password</label>
+    <input type="password" id="m-old" placeholder="current password" style="margin-bottom:12px"/>
+    <label>New Password</label>
+    <input type="password" id="m-new" placeholder="new password" style="margin-bottom:12px"/>
+    <label>Confirm New Password</label>
+    <input type="password" id="m-confirm" style="margin-bottom:16px"/>
+    <div class="modal-footer">
+      <button class="btn" onclick="submitChangePw()">Update</button>
+      <button class="btn secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let token    = localStorage.getItem('swcc_token')    || '';
+let username = localStorage.getItem('swcc_username') || '';
+let currentSort = 'current_price';
+let sortDir  = 'desc';
+let debounceTimer;
+let refreshPoller;
+
+// ── Page routing ───────────────────────────────────────────────────────────────
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showApp() {
+  showPage('app-page');
+  document.getElementById('header-user').textContent = '👤 ' + username;
+  loadSummary();
+  loadData();
+}
+
+// On load: if token exists go straight to app
+window.onload = () => {
+  if (token) showApp();
+};
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  clearMsg('login-err');
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  if (!user || !pass) return showMsg('login-err', 'Please enter username and password');
+
+  const fd = new FormData();
+  fd.append('username', user);
+  fd.append('password', pass);
+
+  try {
+    const r = await fetch('/api/auth/login', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) return showMsg('login-err', d.detail || 'Login failed');
+    token    = d.access_token;
+    username = d.username;
+    localStorage.setItem('swcc_token', token);
+    localStorage.setItem('swcc_username', username);
+    if (d.must_change_pw) { showPage('page-changepw'); return; }
+    showApp();
+  } catch(e) { showMsg('login-err', 'Connection error'); }
+}
+
+async function doRegister() {
+  clearMsg('reg-err'); clearMsg('reg-ok');
+  const user  = document.getElementById('reg-user').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass  = document.getElementById('reg-pass').value;
+  if (!user || !email || !pass) return showMsg('reg-err', 'All fields required');
+
+  try {
+    const r = await fetch('/api/auth/register', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username: user, email, password: pass })
+    });
+    const d = await r.json();
+    if (!r.ok) return showMsg('reg-err', d.detail || 'Registration failed');
+    showMsg('reg-ok', 'Account created! Redirecting to login…');
+    setTimeout(() => showPage('page-login'), 1500);
+  } catch(e) { showMsg('reg-err', 'Connection error'); }
+}
+
+async function doChangePassword() {
+  clearMsg('cpw-err');
+  const old = document.getElementById('cpw-old').value;
+  const nw  = document.getElementById('cpw-new').value;
+  const cfm = document.getElementById('cpw-confirm').value;
+  if (nw !== cfm) return showMsg('cpw-err', 'Passwords do not match');
+  await submitPwChange(old, nw, 'cpw-err', () => showApp());
+}
+
+async function submitChangePw() {
+  clearMsg('modal-err'); clearMsg('modal-ok');
+  const old = document.getElementById('m-old').value;
+  const nw  = document.getElementById('m-new').value;
+  const cfm = document.getElementById('m-confirm').value;
+  if (nw !== cfm) return showMsg('modal-err', 'Passwords do not match');
+  await submitPwChange(old, nw, 'modal-err', () => {
+    showMsg('modal-ok', 'Password updated ✅');
+    setTimeout(closeModal, 1500);
+  });
+}
+
+async function submitPwChange(oldPw, newPw, errId, onSuccess) {
+  try {
+    const r = await api('POST', '/api/auth/change-password',
+      { current_password: oldPw, new_password: newPw });
+    if (!r.ok) { const d = await r.json(); return showMsg(errId, d.detail || 'Failed'); }
+    toast('Password updated', 'success');
+    onSuccess();
+  } catch(e) { showMsg(errId, 'Connection error'); }
+}
+
+function doLogout() {
+  token = ''; username = '';
+  localStorage.removeItem('swcc_token');
+  localStorage.removeItem('swcc_username');
+  clearInterval(refreshPoller);
+  showPage('page-login');
+}
+
+// ── API helper ─────────────────────────────────────────────────────────────────
+function api(method, url, body) {
+  const opts = {
+    method,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(url, opts);
+}
+
+// ── Summary ────────────────────────────────────────────────────────────────────
+async function loadSummary() {
+  try {
+    const r = await api('GET', '/api/stocks/summary');
+    if (r.status === 401) { doLogout(); return; }
+    const d = await r.json();
+    document.getElementById('s-total').textContent     = d.total || 0;
+    document.getElementById('s-good-nf').textContent   = d.good_nf || 0;
+    document.getElementById('s-bad-nf').textContent    = d.bad_nf || 0;
+    document.getElementById('s-good-n2f').textContent  = d.good_n2f || 0;
+    document.getElementById('s-bad-n2f').textContent   = d.bad_n2f || 0;
+    document.getElementById('s-earnings').textContent  = d.earnings_soon || 0;
+    if (d.date) document.getElementById('data-date').textContent = '— ' + d.date;
+  } catch(e) {}
+}
+
+// ── Data table ─────────────────────────────────────────────────────────────────
+function debounceLoad() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadData, 400);
+}
+
+async function loadData() {
+  const search    = document.getElementById('f-search').value.trim();
+  const nfSig     = document.getElementById('f-nf').value;
+  const n2fSig    = document.getElementById('f-n2f').value;
+  const earnSoon  = document.getElementById('f-earnings').value;
+  const sortField = document.getElementById('f-sort').value;
+
+  let url = `/api/stocks/data?sort_by=${sortField}&sort_dir=${sortDir}&limit=500`;
+  if (search)   url += `&search=${encodeURIComponent(search)}`;
+  if (nfSig)    url += `&nf_signal=${nfSig}`;
+  if (n2fSig)   url += `&n2f_signal=${n2fSig}`;
+  if (earnSoon) url += `&earnings_soon=${earnSoon}`;
+
+  try {
+    const r = await api('GET', url);
+    if (r.status === 401) { doLogout(); return; }
+    const d = await r.json();
+    renderTable(d.rows, d.total);
+    if (d.date) document.getElementById('data-date').textContent = '— ' + d.date;
+  } catch(e) { console.error(e); }
+}
+
+function renderTable(rows, total) {
+  const tbody = document.getElementById('tbl-body');
+  document.getElementById('row-count').textContent = `${rows.length} of ${total} stocks`;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="15" class="no-data"><div class="icon">🔍</div>No results found</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="ticker">${r.ticker}</td>
+      <td class="company" title="${r.company_name||''}">${r.company_name||'—'}</td>
+      <td style="color:var(--text3); font-size:12px;">${r.industry||'—'}</td>
+      <td class="price">${r.current_price != null ? '$' + r.current_price.toFixed(2) : '—'}</td>
+      <td>${r.earnings_soon === '⚠️ Yes'
+        ? `<span class="earnings-badge">⚠️ ${r.earnings_date||'Soon'}</span>`
+        : `<span style="color:var(--text3);font-size:12px;">${r.earnings_date||'—'}</span>`}
+      </td>
+      <td style="color:var(--text3);font-size:12px;">${r.nf_expiry||'—'}</td>
+      <td class="price">${r.nf_strike != null ? '$' + r.nf_strike.toFixed(2) : '—'}</td>
+      <td class="price" style="color:var(--green-text);">${r.nf_call_price != null ? '$' + r.nf_call_price.toFixed(2) : '—'}</td>
+      <td class="diff" style="color:${r.nf_strike_diff > 0 ? 'var(--green-text)' : 'var(--red-text)'}">
+        ${r.nf_strike_diff != null ? (r.nf_strike_diff > 0 ? '+' : '') + '$' + r.nf_strike_diff.toFixed(2) : '—'}
+      </td>
+      <td>${signalBadge(r.nf_signal)}</td>
+      <td style="color:var(--text3);font-size:12px;">${r.n2f_expiry||'—'}</td>
+      <td class="price">${r.n2f_strike != null ? '$' + r.n2f_strike.toFixed(2) : '—'}</td>
+      <td class="price" style="color:var(--green-text);">${r.n2f_call_price != null ? '$' + r.n2f_call_price.toFixed(2) : '—'}</td>
+      <td class="diff" style="color:${r.n2f_strike_diff > 0 ? 'var(--green-text)' : 'var(--red-text)'}">
+        ${r.n2f_strike_diff != null ? (r.n2f_strike_diff > 0 ? '+' : '') + '$' + r.n2f_strike_diff.toFixed(2) : '—'}
+      </td>
+      <td>${signalBadge(r.n2f_signal)}</td>
+    </tr>
+  `).join('');
+}
+
+function signalBadge(sig) {
+  if (sig === 'Good') return '<span class="signal good">✅ Good</span>';
+  if (sig === 'Bad')  return '<span class="signal bad">❌ Bad</span>';
+  return '<span style="color:var(--text3);font-size:12px;">—</span>';
+}
+
+function sortBy(col) {
+  if (currentSort === col) sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+  else { currentSort = col; sortDir = 'desc'; }
+  document.getElementById('f-sort').value = col;
+  loadData();
+}
+
+function clearFilters() {
+  document.getElementById('f-search').value   = '';
+  document.getElementById('f-nf').value       = '';
+  document.getElementById('f-n2f').value      = '';
+  document.getElementById('f-earnings').value = '';
+  document.getElementById('f-sort').value     = 'current_price';
+  currentSort = 'current_price'; sortDir = 'desc';
+  loadData();
+}
+
+// ── Refresh ────────────────────────────────────────────────────────────────────
+async function triggerRefresh() {
+  try {
+    const r = await api('POST', '/api/stocks/refresh');
+    if (r.status === 409) { toast('Refresh already running', 'info'); return; }
+    if (r.status === 401) { doLogout(); return; }
+    toast('Refresh started — fetching all tickers…', 'info');
+    document.getElementById('refresh-bar').style.display = 'flex';
+    startRefreshPoller();
+  } catch(e) { toast('Could not start refresh', 'error'); }
+}
+
+function startRefreshPoller() {
+  clearInterval(refreshPoller);
+  refreshPoller = setInterval(async () => {
+    try {
+      const r = await api('GET', '/api/stocks/refresh/status');
+      const d = await r.json();
+      const pct = d.total > 0 ? Math.round(d.progress / d.total * 100) : 0;
+      document.getElementById('refresh-msg').textContent  = d.message;
+      document.getElementById('refresh-fill').style.width = pct + '%';
+      document.getElementById('refresh-pct').textContent  = pct + '%';
+      if (!d.running) {
+        clearInterval(refreshPoller);
+        document.getElementById('refresh-bar').style.display = 'none';
+        toast('Data refresh complete ✅', 'success');
+        loadSummary();
+        loadData();
+      }
+    } catch(e) {}
+  }, 2000);
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────────
+function openChangePwModal() {
+  document.getElementById('cpw-modal').classList.add('open');
+  clearMsg('modal-err'); clearMsg('modal-ok');
+  ['m-old','m-new','m-confirm'].forEach(id => document.getElementById(id).value = '');
+}
+function closeModal() {
+  document.getElementById('cpw-modal').classList.remove('open');
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────────
+function showMsg(id, msg) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+function clearMsg(id) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = ''; el.style.display = 'none'; }
+}
+
+function toast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast show ' + type;
+  setTimeout(() => { t.className = 'toast'; }, 3500);
+}
+
+// Enter key support
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const active = document.querySelector('.page.active')?.id;
+  if (active === 'page-login')    doLogin();
+  if (active === 'page-register') doRegister();
+  if (active === 'page-changepw') doChangePassword();
+});
+</script>
+</body>
+</html>
