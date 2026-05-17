@@ -2,7 +2,7 @@
 Smart Weekly Covered Call — FastAPI entry point
 """
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+#from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -27,7 +27,7 @@ app.include_router(auth.router,   prefix="/api/auth",   tags=["auth"])
 app.include_router(users.router,  prefix="/api/users",  tags=["users"])
 app.include_router(stocks.router, prefix="/api/stocks", tags=["stocks"])
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+#app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
