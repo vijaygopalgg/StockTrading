@@ -31,10 +31,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    with open("templates/index.html") as f:
+    with open("templates/index.html", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 async def catch_all(full_path: str):
-    with open("templates/index.html") as f:
+    with open("templates/index.html", encoding="utf-8") as f:
         return f.read()
